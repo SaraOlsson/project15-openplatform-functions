@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Microsoft.Azure.Devices.Client;
 using System.Text;
+using Newtonsoft.Json.Linq;
 
 namespace OpenPlatform_Functions
 {
@@ -24,12 +25,32 @@ namespace OpenPlatform_Functions
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             dynamic data = JsonConvert.DeserializeObject(requestBody);
 
+            // get payload and metadata
             string deviceConnectionString = data.azDevice;
+            string modelId = data.azPnpModelId;
+            JObject payloadObj = data.payload;
 
-            dynamic payloadObj = data.payload;
+            // add extra to payload 
+            try
+            {
+                dynamic payload = payloadObj["payload"];
+                JArray items = (JArray)payload["values"];
+
+                payloadObj.Add(new JProperty("extras",
+                    new JObject
+                    {
+                        new JProperty("values_length", items.Count)
+                    })
+                );
+
+            } catch(Exception e)
+            {
+                Console.WriteLine($"Cannot get length of payload values array. Error message: {e.Message}");
+            }
+
             string payloadString = JsonConvert.SerializeObject(payloadObj);
 
-            SendIoTData(deviceConnectionString, payloadString);
+            SendIoTData(deviceConnectionString, payloadString, modelId);
 
             log.LogInformation(requestBody);
 
@@ -49,12 +70,13 @@ namespace OpenPlatform_Functions
             dynamic data = JsonConvert.DeserializeObject(requestBody);
 
             string deviceConnectionString = data.azDevice;
+            string modelId = data.azPnpModelId;
 
             dynamic payloadObj = data.payload;
             string payloadString = JsonConvert.SerializeObject(payloadObj);
 
 
-            SendIoTData(deviceConnectionString, payloadString);
+            SendIoTData(deviceConnectionString, payloadString, modelId);
 
             log.LogInformation(requestBody);
 
@@ -63,12 +85,12 @@ namespace OpenPlatform_Functions
             return new OkObjectResult(responseMessage);
         }
 
-        private static async void SendIoTData(string deviceConnectionString, string telemetryPayload)
+        private static async void SendIoTData(string deviceConnectionString, string telemetryPayload, string modelId)
         {
             // if PnP model
             var options = new ClientOptions
             {
-                // ModelId = "dtmi:nordicsemi:eidataforward;2",
+                ModelId = modelId
             };
 
             Console.WriteLine($"SendIoTData");
